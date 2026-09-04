@@ -1,0 +1,85 @@
+# =====================================================================
+# Falcon Scanner — .gitignore (monorepo: Python backend + Vue frontend)
+# =====================================================================
+
+# ---- Python (backend/) ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg
+*.egg-info/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Test / coverage / type-check / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+.tox/
+.nox/
+.cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.python-version
+
+# ---- Node / Vue / Vite (frontend/) ----
+node_modules/
+/frontend/dist/
+dist-ssr/
+.vite/
+*.local
+*.tsbuildinfo
+.eslintcache
+
+# JS package-manager debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.pnpm-store/
+
+# Vite writes a timestamped temp config on some setups
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# ---- Runtime data / logs / secrets ----
+# Audit logs and other runtime output under backend/data/ (keep the dir via .gitkeep)
+backend/data/*.jsonl
+backend/data/*.log
+*.log
+.env
+.env.*
+!.env.example
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
