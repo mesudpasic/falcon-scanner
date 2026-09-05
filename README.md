@@ -1,4 +1,11 @@
-# Falcon Scanner
+```
+   .-'-.
+  /     \          _____     _                    ____
+ |  o o  |        |  ___|_ _| | ___ ___  _ __    / ___|  ___ __ _ _ __  _ __   ___ _ __
+  \  ^  /         | |_ / _` | |/ __/ _ \| '_ \   \___ \ / __/ _` | '_ \| '_ \ / _ \ '__|
+  /|   |\         |  _| (_| | | (_| (_) | | | |   ___) | (_| (_| | | | | | | |  __/ |
+ (_|   |_)        |_|  \__,_|_|\___\___/|_| |_|  |____/ \___\__,_|_| |_|_| |_|\___|_|
+```
 
 Falcon Scanner is an open-source penetration-testing tool that automatically
 uncovers and safely exploits SQL injection weaknesses in web applications —
