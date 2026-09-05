@@ -24,6 +24,8 @@ web GUI always share identical detection logic.
 
 ---
 
+![Falcon Scanner](falcon-scanner-screenshot.png)
+
 ## Table of contents
 
 1. [How it works](#how-it-works)
