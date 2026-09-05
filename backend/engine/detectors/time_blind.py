@@ -18,13 +18,13 @@ from .base import Detector, Finding, Severity
 
 _DELAY = 5  # seconds to request in the sleep payload
 
-# (label, template) — {d} is replaced with the delay in seconds.
+# (label, dbms, template) — {d} is the delay in seconds.
 _PAYLOADS = [
-    ("mysql", "' AND SLEEP({d})-- -"),
-    ("mysql-numeric", " AND SLEEP({d})"),
-    ("postgres", "' AND (SELECT {d} FROM PG_SLEEP({d}))-- -"),
-    ("mssql", "'; WAITFOR DELAY '0:0:{d}'-- -"),
-    ("sqlite", "' AND {d}=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB({big}))))-- -"),
+    ("mysql", "MySQL", "' AND SLEEP({d})-- -"),
+    ("mysql-numeric", "MySQL", " AND SLEEP({d})"),
+    ("postgres", "PostgreSQL", "' AND (SELECT {d} FROM PG_SLEEP({d}))-- -"),
+    ("mssql", "Microsoft SQL Server", "'; WAITFOR DELAY '0:0:{d}'-- -"),
+    ("sqlite", "SQLite", "' AND {d}=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB({big}))))-- -"),
 ]
 
 
@@ -32,16 +32,7 @@ class TimeBlindDetector(Detector):
     name = "time-blind"
 
     async def _elapsed(self, client: HttpClient, target: Target, param: str, value: str) -> float:
-        params = target.mutate(param, value)
-        if target.is_get():
-            resp = await client.request(
-                target.method, target.url, params=params, cookies=target.cookies
-            )
-        else:
-            resp = await client.request(
-                target.method, target.url, data=params, cookies=target.cookies
-            )
-        return resp.elapsed
+        return (await self._request(client, target, param, value)).elapsed
 
     async def test_parameter(
         self, client: HttpClient, target: Target, param: str
@@ -53,7 +44,7 @@ class TimeBlindDetector(Detector):
         b2 = await self._elapsed(client, target, param, base_value)
         baseline = min(b1, b2)
 
-        for label, template in _PAYLOADS:
+        for label, dbms, template in _PAYLOADS:
             payload = template.format(d=_DELAY, big=_DELAY * 2_000_000)
             delayed = await self._elapsed(client, target, param, base_value + payload)
 
@@ -75,6 +66,12 @@ class TimeBlindDetector(Detector):
                                 f"{_DELAY}s sleep."
                             ),
                             confidence=confidence,
+                            detail={
+                                "variant": label,
+                                "dbms": dbms,
+                                "base_value": base_value,
+                                "delay": _DELAY,
+                            },
                         )
                     ]
 

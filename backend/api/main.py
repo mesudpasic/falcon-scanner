@@ -2,10 +2,15 @@
 
 Endpoints:
   POST /api/scans                 create + start a scan, returns scan_id
+  GET  /api/scans                 persisted / in-flight scan list
+  DELETE /api/scans               wipe every scan and its stored artifacts
   GET  /api/scans/{id}            current status, findings, and event log
+  DELETE /api/scans/{id}          remove one scan (cancels if still running)
   GET  /api/scans/{id}/report     downloadable self-contained HTML report
   GET  /api/scans/{id}/dump/{t}   download a dumped table as csv|json|html
   WS   /api/scans/{id}/stream     live event stream (progress + findings)
+  GET  /api/tampers               named evasion scripts the engine ships
+  ANY  /api/oob/{token}           OOB collaborator sink (hit by the target DB)
   GET  /api/audit                 tail of the audit log
   GET  /api/health                liveness probe
 """
@@ -14,31 +19,41 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 
 from engine import AuditLog
+from engine.oob import INBOX
+from engine.tamper import available_tampers
 
 from .exporters import FORMATS, render
 from .manager import ScanManager
 from .report import render_report
-from .models import ScanCreated, ScanRequest, ScanStatus
+from .models import ScanCreated, ScanRequest, ScanStatus, ScanSummary
+from .store import ScanStore
 
 AUDIT_PATH = Path(__file__).resolve().parent.parent / "data" / "audit.log.jsonl"
+STORE_PATH = Path(__file__).resolve().parent.parent / "data" / "scans.db"
 
-app = FastAPI(title="Falcon Scanner API", version="1.0.0")
+app = FastAPI(title="Falcon Scanner API", version="1.1.0")
 
 # Vue dev server runs on a different origin during development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 audit = AuditLog(AUDIT_PATH)
-manager = ScanManager(audit=audit)
+store = ScanStore(STORE_PATH)
+manager = ScanManager(audit=audit, store=store)
 
 
 @app.get("/api/health")
@@ -62,6 +77,35 @@ async def create_scan(req: ScanRequest) -> ScanCreated:
     return ScanCreated(scan_id=scan_id)
 
 
+@app.delete("/api/scans")
+async def delete_all_scans() -> dict:
+    removed = await manager.delete_all()
+    return {"removed": removed}
+
+
+@app.delete("/api/scans/{scan_id}")
+async def delete_scan(scan_id: str) -> dict:
+    if not await manager.delete(scan_id):
+        raise HTTPException(status_code=404, detail="scan not found")
+    return {"removed": 1, "scan_id": scan_id}
+
+
+@app.get("/api/scans", response_model=list[ScanSummary])
+async def list_scans(limit: int = 50) -> list[ScanSummary]:
+    return [
+        ScanSummary(
+            scan_id=s.id,
+            status=s.status,
+            url=s.url,
+            urls=s.urls,
+            method=s.method,
+            created_at=s.created_at,
+            findings_count=len(s.findings),
+        )
+        for s in manager.list_scans(limit)
+    ]
+
+
 @app.get("/api/scans/{scan_id}", response_model=ScanStatus)
 async def get_scan(scan_id: str) -> ScanStatus:
     state = manager.get(scan_id)
@@ -71,11 +115,26 @@ async def get_scan(scan_id: str) -> ScanStatus:
         scan_id=state.id,
         status=state.status,
         url=state.url,
+        urls=state.urls,
         findings=state.findings,
         extracted=state.extracted,
         dumps=state.dumps,
         events=state.events,
+        waf=state.waf,
     )
+
+
+@app.get("/api/tampers")
+async def list_tampers() -> dict:
+    return {"tampers": available_tampers()}
+
+
+@app.api_route("/api/oob/{token}", methods=["GET", "POST", "HEAD", "PUT"])
+async def oob_hit(token: str, request: Request) -> dict:
+    """Collaborator sink. The *target database* calls this, not the operator."""
+    client = request.client.host if request.client else ""
+    INBOX.record(token, source=client, method=request.method)
+    return {"ok": True}
 
 
 @app.get("/api/scans/{scan_id}/report", response_class=HTMLResponse)

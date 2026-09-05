@@ -46,16 +46,7 @@ class BooleanBlindDetector(Detector):
         base_value = target.params.get(param, "")
 
         async def fetch(value: str) -> str:
-            params = target.mutate(param, value)
-            if target.is_get():
-                resp = await client.request(
-                    target.method, target.url, params=params, cookies=target.cookies
-                )
-            else:
-                resp = await client.request(
-                    target.method, target.url, data=params, cookies=target.cookies
-                )
-            return resp.text
+            return (await self._request(client, target, param, value)).text
 
         baseline = await fetch(base_value)
 

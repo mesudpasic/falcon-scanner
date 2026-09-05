@@ -80,13 +80,31 @@ def _extracted_html(extracted: list[dict]) -> str:
             for k, v in (item.get("values") or {}).items()
         )
         tables = item.get("tables") or []
+        databases = item.get("databases") or []
+        schemas = item.get("schemas") or []
+        extra_bits = []
+        if databases:
+            extra_bits.append(
+                "<div class='tables'><strong>Databases:</strong> "
+                + ", ".join(f"<code>{escape(str(d))}</code>" for d in databases)
+                + "</div>"
+            )
+        if schemas:
+            extra_bits.append(
+                "<div class='tables'><strong>Schemas:</strong> "
+                + ", ".join(f"<code>{escape(str(s))}</code>" for s in schemas)
+                + "</div>"
+            )
         tables_html = (
-            "<div class='tables'><strong>Tables:</strong> "
-            + ", ".join(f"<code>{escape(str(t))}</code>" for t in tables)
-            + "</div>"
+            (
+                "<div class='tables'><strong>Tables:</strong> "
+                + ", ".join(f"<code>{escape(str(t))}</code>" for t in tables)
+                + "</div>"
+            )
             if tables
             else ""
         )
+        tables_html = "".join(extra_bits) + tables_html
         values_table = (
             f"<table class='exvalues'><tbody>{rows}</tbody></table>" if rows else ""
         )
@@ -211,6 +229,7 @@ def render_report(state: "ScanState") -> str:
   <div class="card">
     <dl class="meta">
       <dt>Target URL</dt><dd>{escape(state.url)}</dd>
+      <dt>All URLs</dt><dd>{escape(", ".join(getattr(state, "urls", None) or [state.url]))}</dd>
       <dt>Method</dt><dd>{escape(state.method)}</dd>
       <dt>Parameters</dt><dd>{_params_html(state.params)}</dd>
       <dt>Started</dt><dd>{escape(state.created_at or "n/a")}</dd>

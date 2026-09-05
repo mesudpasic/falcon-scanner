@@ -9,6 +9,8 @@ defineProps({
   scanId: { type: String, default: null },
   extracted: { type: Array, default: () => [] },
   dumps: { type: Array, default: () => [] },
+  waf: { type: Array, default: () => [] },
+  urls: { type: Array, default: () => [] },
 });
 
 const dumpFormat = ref("csv");
@@ -17,232 +19,157 @@ function dumpUrl(scanId, table) {
   return `/api/scans/${scanId}/dump/${encodeURIComponent(table)}?format=${dumpFormat.value}`;
 }
 
-const sevColor = {
-  info: "#58a6ff",
-  low: "#3fb950",
-  medium: "#d29922",
-  high: "#f85149",
-  critical: "#ff5c8a",
+const sevClass = {
+  info: "text-bg-info",
+  low: "text-bg-success",
+  medium: "text-bg-warning",
+  high: "text-bg-danger",
+  critical: "text-bg-danger",
 };
 </script>
 
 <template>
-  <div class="card">
-    <div class="head">
-      <h2>Results</h2>
-      <a
-        v-if="scanId && (status === 'finished' || status === 'error')"
-        class="download"
-        :href="`/api/scans/${scanId}/report`"
-        :download="`sqli-report-${scanId}.html`"
-      >
-        ↓ Download HTML report
-      </a>
-    </div>
-
-    <div v-if="progress" class="progress">
-      <div class="bar">
-        <div
-          class="fill"
-          :style="{ width: (100 * progress.step) / progress.total_steps + '%' }"
-        ></div>
+  <div class="card card-falcon">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+        <h2 class="h5 mb-0">Results</h2>
+        <a
+          v-if="scanId && (status === 'finished' || status === 'error')"
+          class="btn btn-sm btn-primary"
+          :href="`/api/scans/${scanId}/report`"
+          :download="`sqli-report-${scanId}.html`"
+        >
+          Download HTML report
+        </a>
       </div>
-      <span>{{ progress.step }}/{{ progress.total_steps }} · {{ progress.detector }} → {{ progress.parameter }}</span>
-    </div>
 
-    <p v-if="status" class="status" :class="status">Status: {{ status }}</p>
-
-    <div v-if="findings.length" class="findings">
-      <div v-for="(f, i) in findings" :key="i" class="finding">
-        <span class="sev" :style="{ background: sevColor[f.severity] || '#8b949e' }">
-          {{ f.severity }}
-        </span>
-        <div>
-          <strong>{{ f.technique }}</strong> in <code>{{ f.parameter }}</code>
-          <span class="conf">confidence {{ f.confidence }}</span>
-          <div class="evidence">{{ f.evidence }}</div>
-          <div class="payload">{{ f.payload }}</div>
+      <div v-if="progress" class="mb-3">
+        <div class="progress" role="progressbar" style="height: 8px">
+          <div
+            class="progress-bar bg-success"
+            :style="{ width: (100 * progress.step) / progress.total_steps + '%' }"
+          ></div>
+        </div>
+        <div class="form-help">
+          {{ progress.step }}/{{ progress.total_steps }} · {{ progress.detector }} → {{ progress.parameter }}
         </div>
       </div>
-    </div>
-    <p v-else-if="status === 'finished'" class="none">No SQL injection detected.</p>
 
-    <div v-if="extracted.length" class="extracted">
-      <h3>Extracted data</h3>
-      <div v-for="(x, i) in extracted" :key="i" class="exblock">
-        <div class="exhead">
-          <code>{{ x.parameter }}</code> · via {{ x.channel }} · {{ x.dbms || "unknown DBMS" }}
-        </div>
-        <table v-if="x.values && Object.keys(x.values).length" class="exvalues">
-          <tbody>
-            <tr v-for="(v, k) in x.values" :key="k">
-              <td class="exkey">{{ k }}</td>
-              <td class="exval">{{ v }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-if="x.tables && x.tables.length" class="tables">
-          <strong>Tables:</strong>
-          <code v-for="(t, ti) in x.tables" :key="ti" class="tbl">{{ t }}</code>
+      <p v-if="status" class="small mb-2" :class="status === 'error' ? 'text-danger' : status === 'finished' ? 'text-success' : 'text-info'">
+        Status: {{ status }}
+      </p>
+      <p v-if="urls.length > 1" class="small text-secondary">
+        {{ urls.length }} targets:
+        <code v-for="u in urls" :key="u" class="me-1">{{ u }}</code>
+      </p>
+
+      <div v-if="waf.length" class="alert alert-warning py-2 small">
+        <div v-for="(w, i) in waf" :key="i">
+          WAF: <strong>{{ w.product || "detected" }}</strong>
+          <span v-if="w.host"> on {{ w.host }}</span>
+          — {{ w.evidence }}
         </div>
       </div>
-    </div>
 
-    <div v-if="dumps.length" class="dumps">
-      <div class="dumphead">
-        <h3>Database dump ({{ dumps.length }} tables)</h3>
-        <label class="fmt">
-          File type
-          <select v-model="dumpFormat">
-            <option value="csv">CSV</option>
-            <option value="json">JSON</option>
-            <option value="html">HTML</option>
-          </select>
-        </label>
-      </div>
-      <div v-for="(d, i) in dumps" :key="i" class="dumpblock">
-        <div class="dbhead">
-          <div>
-            <code class="tbl">{{ d.table }}</code>
-            <span class="rowcount">
-              {{ d.rows.length }}<template v-if="d.truncated"> of {{ d.row_count }}</template> rows
-              <template v-if="d.truncated">(capped)</template>
+      <div v-if="findings.length">
+        <div v-for="(f, i) in findings" :key="i" class="border rounded-3 p-3 mb-2">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <span class="badge rounded-pill" :class="sevClass[f.severity] || 'text-bg-secondary'">
+              {{ f.severity }}
             </span>
+            <strong>{{ f.technique }}</strong>
+            <span class="text-secondary">in</span>
+            <code>{{ f.parameter }}</code>
+            <span class="small text-secondary">confidence {{ f.confidence }}</span>
           </div>
-          <a
-            class="download small"
-            :href="dumpUrl(scanId, d.table)"
-            :download="`${d.table}.${dumpFormat}`"
-          >
-            ↓ Download {{ dumpFormat.toUpperCase() }}
-          </a>
+          <div v-if="f.url" class="small text-secondary text-break">{{ f.url }}</div>
+          <div class="small mt-1">{{ f.evidence }}</div>
+          <div v-if="f.payload" class="payload-text mt-1">{{ f.payload }}</div>
         </div>
-        <div class="tablewrap" v-if="d.rows.length">
-          <table class="dumptable">
-            <thead>
-              <tr><th v-for="(c, ci) in d.columns" :key="ci">{{ c }}</th></tr>
-            </thead>
+      </div>
+      <p v-else-if="status === 'finished'" class="text-secondary mb-0">No SQL injection detected.</p>
+      <p v-else-if="!status" class="text-secondary mb-0">
+        Start a scan to see live findings here. Open <strong>Guide</strong> if you are new to the options.
+      </p>
+
+      <div v-if="extracted.length" class="mt-4 pt-3 border-top">
+        <h3 class="h6 text-info-emphasis">Extracted data</h3>
+        <div v-for="(x, i) in extracted" :key="i" class="border rounded-3 p-3 mb-2">
+          <div class="small text-secondary mb-2">
+            <code>{{ x.parameter }}</code> · via {{ x.channel }} · {{ x.dbms || "unknown DBMS" }}
+          </div>
+          <table v-if="x.values && Object.keys(x.values).length" class="table table-sm table-borderless mb-2">
             <tbody>
-              <tr v-for="(row, ri) in d.rows" :key="ri">
-                <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+              <tr v-for="(v, k) in x.values" :key="k">
+                <td class="text-secondary text-nowrap small">{{ k }}</td>
+                <td class="font-monospace small text-success text-break">{{ v }}</td>
               </tr>
             </tbody>
           </table>
+          <div v-if="x.databases && x.databases.length" class="small mb-1">
+            <strong>Databases:</strong>
+            <code v-for="(d, di) in x.databases" :key="di" class="ms-1">{{ d }}</code>
+          </div>
+          <div v-if="x.schemas && x.schemas.length" class="small mb-1">
+            <strong>Schemas:</strong>
+            <code v-for="(s, si) in x.schemas" :key="si" class="ms-1">{{ s }}</code>
+          </div>
+          <div v-if="x.tables && x.tables.length" class="small">
+            <strong>Tables:</strong>
+            <code v-for="(t, ti) in x.tables" :key="ti" class="ms-1">{{ t }}</code>
+          </div>
         </div>
-        <p v-else class="none">No rows returned.</p>
       </div>
-    </div>
 
-    <details v-if="log.length" class="logbox">
-      <summary>Event log ({{ log.length }})</summary>
-      <pre>{{ log.map((e) => JSON.stringify(e)).join("\n") }}</pre>
-    </details>
+      <div v-if="dumps.length" class="mt-4 pt-3 border-top">
+        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
+          <h3 class="h6 text-warning mb-0">Database dump ({{ dumps.length }} tables)</h3>
+          <label class="small text-secondary d-flex align-items-center gap-2 mb-0">
+            File type
+            <select v-model="dumpFormat" class="form-select form-select-sm" style="width: auto">
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+              <option value="html">HTML</option>
+            </select>
+          </label>
+        </div>
+        <div v-for="(d, i) in dumps" :key="i" class="border rounded-3 p-3 mb-2">
+          <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
+            <div>
+              <code class="text-warning">{{ d.table }}</code>
+              <span class="small text-secondary ms-2">
+                {{ d.rows.length }}<template v-if="d.truncated"> of {{ d.row_count }}</template> rows
+                <template v-if="d.truncated">(capped)</template>
+              </span>
+            </div>
+            <a
+              class="btn btn-sm btn-outline-primary"
+              :href="dumpUrl(scanId, d.table)"
+              :download="`${d.table}.${dumpFormat}`"
+            >
+              Download {{ dumpFormat.toUpperCase() }}
+            </a>
+          </div>
+          <div class="table-responsive" style="max-height: 320px" v-if="d.rows.length">
+            <table class="table table-sm table-striped table-hover mb-0">
+              <thead class="sticky-top">
+                <tr><th v-for="(c, ci) in d.columns" :key="ci">{{ c }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, ri) in d.rows" :key="ri">
+                  <td v-for="(cell, ci) in row" :key="ci" class="font-monospace text-nowrap">{{ cell }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-else class="text-secondary small mb-0">No rows returned.</p>
+        </div>
+      </div>
+
+      <details v-if="log.length" class="mt-3">
+        <summary class="small text-secondary" style="cursor: pointer">Event log ({{ log.length }})</summary>
+        <pre class="bg-body-tertiary border rounded-3 p-2 mt-2 small mb-0" style="max-height: 240px; overflow: auto">{{ log.map((e) => JSON.stringify(e)).join("\n") }}</pre>
+      </details>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 10px;
-  padding: 20px;
-}
-h2 { margin: 0 0 12px; font-size: 18px; }
-.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.head h2 { margin: 0 0 12px; }
-.download {
-  display: inline-block;
-  margin-bottom: 12px;
-  background: #1f6feb;
-  color: #fff;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 7px 12px;
-  border-radius: 6px;
-}
-.download:hover { background: #388bfd; }
-.progress { margin-bottom: 12px; }
-.bar { height: 8px; background: #0d1117; border-radius: 4px; overflow: hidden; }
-.fill { height: 100%; background: #238636; transition: width 0.2s; }
-.progress span { font-size: 12px; color: #8b949e; }
-.status { font-size: 13px; }
-.status.finished { color: #3fb950; }
-.status.error { color: #f85149; }
-.finding {
-  display: flex;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  margin-bottom: 8px;
-}
-.sev {
-  align-self: flex-start;
-  color: #0d1117;
-  font-weight: 700;
-  font-size: 11px;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-.conf { color: #8b949e; font-size: 12px; margin-left: 8px; }
-.evidence { color: #c9d1d9; font-size: 13px; margin-top: 4px; }
-.payload {
-  font-family: monospace;
-  font-size: 12px;
-  color: #d29922;
-  margin-top: 4px;
-  word-break: break-all;
-}
-.none { color: #8b949e; }
-.extracted { margin-top: 16px; border-top: 1px solid #21262d; padding-top: 14px; }
-.extracted h3 { margin: 0 0 10px; font-size: 15px; color: #d2a8ff; }
-.exblock { border: 1px solid #30363d; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
-.exhead { font-size: 12px; color: #8b949e; margin-bottom: 8px; }
-.exvalues { width: 100%; border-collapse: collapse; }
-.exvalues td { padding: 5px 10px 5px 0; border-bottom: 1px solid #21262d; vertical-align: top; }
-.exkey { color: #8b949e; font-size: 13px; white-space: nowrap; }
-.exval { font-family: monospace; font-size: 12px; color: #7ee787; word-break: break-all; }
-.tables { margin-top: 8px; font-size: 13px; color: #c9d1d9; }
-.tables .tbl { margin: 0 4px 4px 0; display: inline-block; }
-.dumps { margin-top: 16px; border-top: 1px solid #21262d; padding-top: 14px; }
-.dumphead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.dumphead h3 { margin: 0 0 10px; font-size: 15px; color: #ffa657; }
-.fmt { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
-.fmt select {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #e6edf3;
-  padding: 5px 8px;
-  font: inherit;
-}
-.dumpblock { border: 1px solid #30363d; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
-.dbhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.dbhead .tbl { font-size: 13px; color: #ffa657; }
-.rowcount { color: #8b949e; font-size: 12px; margin-left: 8px; }
-.download.small { margin: 0; padding: 5px 10px; font-size: 12px; }
-.tablewrap { overflow-x: auto; max-height: 320px; overflow-y: auto; }
-.dumptable { border-collapse: collapse; width: 100%; font-size: 12px; }
-.dumptable th, .dumptable td {
-  border: 1px solid #21262d;
-  padding: 5px 8px;
-  text-align: left;
-  white-space: nowrap;
-}
-.dumptable th { background: #0d1117; color: #c9d1d9; position: sticky; top: 0; }
-.dumptable td { color: #adbac7; font-family: monospace; }
-.dumptable tr:nth-child(even) td { background: #12161c; }
-code { background: #0d1117; padding: 1px 4px; border-radius: 4px; }
-.logbox { margin-top: 12px; }
-.logbox summary { cursor: pointer; color: #8b949e; font-size: 13px; }
-.logbox pre {
-  background: #0d1117;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  overflow-x: auto;
-  max-height: 240px;
-}
-</style>

@@ -1,86 +1,265 @@
 <script setup>
-import { ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import ScanForm from "./components/ScanForm.vue";
 import ScanResults from "./components/ScanResults.vue";
-import { createScan, openScanStream } from "./api";
+import DocsPanel from "./components/DocsPanel.vue";
+import { clearScans, createScan, deleteScan, getScan, listScans, openScanStream } from "./api";
 
-const running = ref(false);
-const status = ref("");
-const progress = ref(null);
-const findings = ref([]);
-const log = ref([]);
 const error = ref("");
-const scanId = ref(null);
-const extracted = ref([]);
-const dumps = ref([]);
+const guideOpen = ref(false);
+const history = ref([]);
+const selectedId = ref(null);
+const sessions = ref({});
+const sockets = new Map();
+
+const runningCount = computed(
+  () => history.value.filter((s) => s.status === "running" || s.status === "pending").length
+);
+
+const current = computed(() => {
+  const id = selectedId.value;
+  if (!id) {
+    return {
+      progress: null,
+      findings: [],
+      log: [],
+      status: "",
+      extracted: [],
+      dumps: [],
+      waf: [],
+      urls: [],
+    };
+  }
+  return (
+    sessions.value[id] || {
+      progress: null,
+      findings: [],
+      log: [],
+      status: "",
+      extracted: [],
+      dumps: [],
+      waf: [],
+      urls: [],
+    }
+  );
+});
+
+function emptySession(partial = {}) {
+  return {
+    progress: null,
+    findings: [],
+    log: [],
+    status: "pending",
+    extracted: [],
+    dumps: [],
+    waf: [],
+    urls: [],
+    ...partial,
+  };
+}
+
+function upsertHistory(entry) {
+  const idx = history.value.findIndex((s) => s.scan_id === entry.scan_id);
+  if (idx >= 0) history.value.splice(idx, 1, { ...history.value[idx], ...entry });
+  else history.value.unshift(entry);
+}
+
+function applyEvent(id, event) {
+  const session = sessions.value[id];
+  if (!session) return;
+  session.log.push(event);
+  if (event.type === "progress") session.progress = event;
+  else if (event.type === "finding") session.findings.push(event);
+  else if (event.type === "extracted-data") session.extracted.push(event);
+  else if (event.type === "table-dump") session.dumps.push(event);
+  else if (event.type === "waf" && event.detected) session.waf.push(event);
+  else if (event.type === "scan_started" && event.urls) session.urls = event.urls;
+  else if (event.type === "error") error.value = event.message;
+  else if (event.type === "done") {
+    session.status = event.status;
+    upsertHistory({ scan_id: id, status: event.status, findings_count: session.findings.length });
+  }
+}
+
+function watchScan(scanId) {
+  if (sockets.has(scanId)) return;
+  const ws = openScanStream(
+    scanId,
+    (event) => applyEvent(scanId, event),
+    () => {
+      sockets.delete(scanId);
+      const session = sessions.value[scanId];
+      if (session && (session.status === "running" || session.status === "pending")) {
+        session.status = session.status === "running" ? "finished" : session.status;
+      }
+    }
+  );
+  sockets.set(scanId, ws);
+}
+
+function hydrateFromApi(data) {
+  const id = data.scan_id;
+  sessions.value[id] = emptySession({
+    status: data.status,
+    findings: data.findings || [],
+    extracted: data.extracted || [],
+    dumps: data.dumps || [],
+    log: data.events || [],
+    waf: data.waf || [],
+    urls: data.urls || (data.url ? [data.url] : []),
+    progress: (data.events || []).findLast?.((e) => e.type === "progress")
+      || [...(data.events || [])].reverse().find((e) => e.type === "progress")
+      || null,
+  });
+  if (data.status === "running" || data.status === "pending") {
+    watchScan(id);
+  }
+}
+
+async function refreshHistory() {
+  try {
+    history.value = await listScans();
+  } catch {
+    /* backend may not be up yet */
+  }
+}
+
+async function selectScan(id) {
+  selectedId.value = id;
+  error.value = "";
+  if (!sessions.value[id]) {
+    try {
+      hydrateFromApi(await getScan(id));
+    } catch (e) {
+      error.value = e.message;
+    }
+  } else if (
+    sessions.value[id].status === "running" ||
+    sessions.value[id].status === "pending"
+  ) {
+    watchScan(id);
+  }
+}
+
+function forgetScan(id) {
+  const ws = sockets.get(id);
+  if (ws) {
+    try {
+      ws.close();
+    } catch {
+      /* already closed */
+    }
+    sockets.delete(id);
+  }
+  delete sessions.value[id];
+  history.value = history.value.filter((s) => s.scan_id !== id);
+  if (selectedId.value === id) selectedId.value = null;
+}
+
+async function removeScan(id) {
+  error.value = "";
+  try {
+    await deleteScan(id);
+    forgetScan(id);
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+
+async function removeAllScans() {
+  error.value = "";
+  try {
+    await clearScans();
+    for (const id of [...sockets.keys()]) forgetScan(id);
+    sessions.value = {};
+    history.value = [];
+    selectedId.value = null;
+  } catch (e) {
+    error.value = e.message;
+  }
+}
 
 async function startScan(payload) {
   error.value = "";
-  findings.value = [];
-  log.value = [];
-  progress.value = null;
-  scanId.value = null;
-  extracted.value = [];
-  dumps.value = [];
-  status.value = "starting";
-  running.value = true;
-
   try {
     const { scan_id } = await createScan(payload);
-    scanId.value = scan_id;
-    status.value = "running";
-    openScanStream(
+    sessions.value[scan_id] = emptySession({
+      status: "running",
+      urls: payload.urls || (payload.url ? [payload.url] : []),
+    });
+    upsertHistory({
       scan_id,
-      (event) => {
-        log.value.push(event);
-        if (event.type === "progress") progress.value = event;
-        else if (event.type === "finding") findings.value.push(event);
-        else if (event.type === "extracted-data") extracted.value.push(event);
-        else if (event.type === "table-dump") dumps.value.push(event);
-        else if (event.type === "error") error.value = event.message;
-        else if (event.type === "done") {
-          status.value = event.status;
-          running.value = false;
-        }
-      },
-      () => {
-        running.value = false;
-      }
-    );
+      status: "running",
+      url: payload.url || (payload.urls && payload.urls[0]) || "",
+      urls: payload.urls || [],
+      created_at: new Date().toISOString(),
+      findings_count: 0,
+    });
+    selectedId.value = scan_id;
+    watchScan(scan_id);
   } catch (e) {
     error.value = e.message;
-    status.value = "error";
-    running.value = false;
   }
 }
+
+onMounted(() => {
+  refreshHistory();
+});
 </script>
 
 <template>
-  <div class="app">
-    <header>
-      <div class="brand">
-        <img class="logo" src="/falcon.png" alt="Falcon Scanner logo" />
-        <h1>Falcon Scanner</h1>
-      </div>
-      <p class="tagline">
-        Falcon Scanner is an open-source penetration-testing tool that
-        automatically uncovers and safely exploits SQL injection weaknesses in
-        web applications — revealing how far an attacker could reach, from
-        leaking sensitive data to fully compromising the database server.
-      </p>
-      <p class="sub">Authorized use only · test only targets you own or have written permission to test.</p>
-    </header>
+  <div class="container-xxl py-4">
+    <nav class="navbar navbar-expand-md mb-3 px-0">
+      <a class="navbar-brand d-flex align-items-center gap-2 mb-0" href="#">
+        <img src="/falcon.png" alt="Falcon Scanner logo" />
+        <span class="fw-semibold">Falcon Scanner</span>
+      </a>
+      <button
+        type="button"
+        class="btn btn-outline-info btn-sm ms-md-auto mt-3 mt-md-0"
+        @click="guideOpen = true"
+      >
+        Guide &amp; options
+      </button>
+    </nav>
 
-    <p v-if="error" class="banner">{{ error }}</p>
+    <p class="text-secondary mb-2">
+      Open-source SQL-injection scanner with a live GUI. It finds injectable
+      parameters and shows how far an attacker could reach — from leaked data
+      to a full schema dump.
+    </p>
+    <p class="small text-warning-emphasis mb-4">
+      Authorized use only. Test only targets you own or have written permission to test.
+    </p>
 
-    <div class="grid">
-      <ScanForm :running="running" @submit="startScan" />
-      <ScanResults :progress="progress" :findings="findings" :log="log" :status="status" :scan-id="scanId" :extracted="extracted" :dumps="dumps" />
+    <div v-if="error" class="alert alert-danger">{{ error }}</div>
+
+    <div class="d-flex flex-column gap-4">
+      <ScanForm
+        :running-count="runningCount"
+        :history="history"
+        :selected-id="selectedId"
+        @submit="startScan"
+        @select-scan="selectScan"
+        @delete-scan="removeScan"
+        @clear-history="removeAllScans"
+      />
+      <ScanResults
+        :progress="current.progress"
+        :findings="current.findings"
+        :log="current.log"
+        :status="current.status"
+        :scan-id="selectedId"
+        :extracted="current.extracted"
+        :dumps="current.dumps"
+        :waf="current.waf"
+        :urls="current.urls"
+      />
     </div>
 
-    <footer class="site-footer">
-      <span>Falcon Scanner <strong>v1.0.0</strong></span>
-      <span class="dot">·</span>
+    <footer class="d-flex flex-wrap align-items-center gap-2 mt-5 pt-3 border-top text-secondary small">
+      <span>Falcon Scanner <strong>v1.1.0</strong></span>
+      <span class="opacity-50">·</span>
       <span>
         Built by
         <a href="https://www.setec.ba" target="_blank" rel="noopener noreferrer">SETEC d.o.o.</a>
@@ -88,44 +267,7 @@ async function startScan(payload) {
         <a href="https://www.setec.ba" target="_blank" rel="noopener noreferrer">www.setec.ba</a>
       </span>
     </footer>
+
+    <DocsPanel :open="guideOpen" @update:open="guideOpen = $event" />
   </div>
 </template>
-
-<style>
-body {
-  margin: 0;
-  background: #0d1117;
-  color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
-.app { width: 100%; max-width: 1440px; margin: 0 auto; padding: 32px clamp(16px, 4vw, 48px); box-sizing: border-box; }
-header h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); }
-.brand { display: flex; align-items: center; gap: 14px; }
-.logo { height: clamp(40px, 6vw, 56px); width: auto; display: block; }
-.tagline { color: #c9d1d9; font-size: 15px; line-height: 1.5; margin: 8px 0 4px; max-width: 720px; }
-.sub { color: #8b949e; font-size: 13px; margin: 6px 0 20px; }
-.banner {
-  background: #3d1418;
-  border: 1px solid #f85149;
-  color: #ffa198;
-  padding: 10px 14px;
-  border-radius: 8px;
-}
-.grid { display: grid; grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr); gap: 24px; align-items: start; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-.site-footer {
-  margin-top: 40px;
-  padding-top: 20px;
-  border-top: 1px solid #21262d;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: #8b949e;
-  font-size: 13px;
-}
-.site-footer a { color: #58a6ff; text-decoration: none; }
-.site-footer a:hover { text-decoration: underline; }
-.site-footer .dot { color: #30363d; }
-@media (max-width: 500px) { .site-footer .dot { display: none; } }
-</style>

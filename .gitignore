@@ -68,6 +68,7 @@ vite.config.ts.timestamp-*
 # Audit logs and other runtime output under backend/data/ (keep the dir via .gitkeep)
 backend/data/*.jsonl
 backend/data/*.log
+backend/data/*.db
 *.log
 .env
 .env.*

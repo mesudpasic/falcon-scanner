@@ -1,0 +1,218 @@
+/* Falcon dark theme on top of Bootstrap's data-bs-theme="dark". */
+:root,
+[data-bs-theme="dark"] {
+  --bs-body-bg: #0b1017;
+  --bs-body-color: #e6edf3;
+  --bs-secondary-color: #8b949e;
+  --bs-border-color: #30363d;
+  --bs-tertiary-bg: #161b22;
+  --falcon-accent: #3fb950;
+  --falcon-accent-hover: #56d364;
+  --falcon-gold: #e3b341;
+}
+
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, rgba(63, 185, 80, 0.08), transparent 50%),
+    radial-gradient(900px 400px at 100% 0%, rgba(88, 166, 255, 0.07), transparent 45%),
+    var(--bs-body-bg);
+  min-height: 100vh;
+}
+
+.navbar-brand img {
+  height: 36px;
+  width: auto;
+}
+
+.card-falcon .card-header {
+  border-bottom-color: var(--bs-border-color);
+}
+
+.card-falcon .nav-tabs .nav-link {
+  color: var(--bs-secondary-color);
+  border: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.card-falcon .nav-tabs .nav-link:hover {
+  color: var(--bs-body-color);
+}
+
+.card-falcon .nav-tabs .nav-link.active {
+  color: var(--falcon-accent);
+  background: transparent;
+  border-bottom-color: var(--falcon-accent);
+}
+
+.card-falcon {
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.btn-falcon {
+  background: var(--falcon-accent);
+  border-color: var(--falcon-accent);
+  color: #0b1017;
+  font-weight: 600;
+}
+
+.btn-falcon:hover:not(:disabled) {
+  background: var(--falcon-accent-hover);
+  border-color: var(--falcon-accent-hover);
+  color: #0b1017;
+}
+
+.btn-falcon:disabled {
+  background: #30363d;
+  border-color: #30363d;
+  color: #8b949e;
+}
+
+.accordion-item {
+  border: 0;
+}
+
+.accordion-button {
+  background: #21262d;
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem !important;
+}
+
+.accordion-button:hover {
+  background: #2a3139;
+}
+
+.accordion-button:not(.collapsed),
+.accordion-button:focus {
+  background: #21262d;
+  box-shadow: none;
+  color: var(--bs-body-color);
+}
+
+.accordion-button:not(.collapsed) {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom-color: transparent;
+}
+
+.accordion-flush .accordion-collapse.show,
+.accordion-flush .accordion-collapse.collapsing {
+  background: #161b22;
+  border: 1px solid var(--bs-border-color);
+  border-top: 0;
+  border-radius: 0 0 0.5rem 0.5rem;
+}
+
+.form-control-num {
+  width: 7rem;
+  max-width: 7rem;
+}
+
+.form-help {
+  color: var(--bs-secondary-color);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.help-tip {
+  position: relative;
+  cursor: help;
+  color: #8b949e;
+  font-size: 0.85rem;
+  vertical-align: 1px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1080;
+  width: max-content;
+  max-width: min(280px, 70vw);
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.4rem;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 400;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.help-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #21262d;
+}
+
+body.guide-open {
+  overflow: hidden;
+}
+
+.guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1040;
+  background: rgba(1, 4, 9, 0.62);
+}
+
+.guide-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1045;
+  width: min(520px, 100vw);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+  border-right: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.guide-panel-body {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.help-tip:hover {
+  color: #58a6ff;
+}
+
+.hist-item.active {
+  border-color: var(--falcon-accent) !important;
+}
+
+.payload-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--falcon-gold);
+  word-break: break-all;
+}
+
+.docs-section h3 {
+  font-size: 1.05rem;
+  margin-top: 1.4rem;
+}
+
+.docs-section h3:first-child {
+  margin-top: 0;
+}
+
+.docs-kbd {
+  font-size: 0.78rem;
+}

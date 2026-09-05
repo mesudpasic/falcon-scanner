@@ -6,6 +6,8 @@ import enum
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ..tamper import apply_tampers
+
 if TYPE_CHECKING:
     from ..http_client import HttpClient
     from ..target import Target
@@ -50,6 +52,7 @@ class Detector:
         self, client: "HttpClient", target: "Target", param: str, value: str
     ):
         """Send one request with ``param`` set to ``value`` (GET query or POST body)."""
+        value = apply_tampers(value, target.tampers)
         params = target.mutate(param, value)
         if target.is_get():
             return await client.request(

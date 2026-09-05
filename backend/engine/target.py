@@ -17,6 +17,14 @@ class Target:
     method: str = "GET"
     params: dict[str, str] = field(default_factory=dict)
     cookies: dict[str, str] = field(default_factory=dict)
+    tampers: list[str] = field(default_factory=list)
+    oob_callback: str = ""
+    oob_domain: str = ""
+    oob_poll_url: str = ""
+    oob_poll_auth: str = ""
+    oob_interactsh: str = ""
+    oob_interactsh_token: str = ""
+    oob_collaborator: object | None = None
 
     def testable_params(self) -> list[str]:
         return list(self.params.keys())
